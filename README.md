@@ -205,7 +205,8 @@ Confidence: 97%
 Add deployed link:
 
 ```text
-[Live Demo URL]
+[
+http://localhost:8501]
 ```
 
 ---
@@ -213,7 +214,7 @@ Add deployed link:
 # 💻 GitHub Repo
 
 ```text
-[GitHub Repository URL]
+[https://github.com/ranganath18/Sentiment_Analysis_project/blob/main/api.py]
 ```
 
 ---
@@ -236,8 +237,8 @@ This project improved my understanding of:
 **Rangam Ranganath
 B.TECH CSE(DATA SCIENCE) **
 
-🔗 LinkedIn: [Add Link]  
-💻 GitHub: [Add Link]
+🔗 LinkedIn: [www.linkedin.com/in/ranganath-rangam-49a2a324a]  
+💻 GitHub: [https://github.com/ranganath18]
 
 ---
 
