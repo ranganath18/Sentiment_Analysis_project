@@ -2,6 +2,7 @@
 
 <p align="center">
 
+
 🚀 FastAPI • Streamlit • Scikit-learn • Docker • MLOps Mini Project
 
 </p>
