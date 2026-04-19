@@ -1,8 +1,107 @@
 import streamlit as st
-import requests
-import json
+import joblib, re
 
-API_URL = "http://api:8000"
+# --- STOPWORDS ---
+STOPWORDS = set([
+    'i','me','my','myself','we','our','ours','ourselves','you','your','yours',
+    'yourself','yourselves','he','him','his','himself','she','her','hers',
+    'herself','it','its','itself','they','them','their','theirs','themselves',
+    'what','which','who','whom','this','that','these','those','am','is','are',
+    'was','were','be','been','being','have','has','had','having','do','does',
+    'did','doing','a','an','the','and','but','if','or','because','as','until',
+    'while','of','at','by','for','with','about','against','between','into',
+    'through','during','before','after','above','below','to','from','up',
+    'down','in','out','on','off','over','under','again','further','then',
+    'once','here','there','when','where','why','how','all','both','each',
+    'few','more','most','other','some','such','no','nor','not','only','own',
+    'same','so','than','too','very','s','t','can','will','just','don',
+    'should','now','d','ll','m','o','re','ve','y','ain','aren','couldn',
+    'didn','doesn','hadn','hasn','haven','isn','mightn','mustn','needn',
+    'shan','shouldn','wasn','weren','won','wouldn','also','would','could',
+    'shall','may','might','must','need','dare','used','br','film','movie'
+])
+
+# --- PREPROCESSING ---
+def remove_html_tags(text): return re.sub(r'<[^>]+>', ' ', text)
+def remove_urls(text): return re.sub(r'http\S+|www\.\S+', '', text)
+def remove_special_characters(text): return re.sub(r'[^a-z\s]', '', text)
+def tokenize(text): return text.split()
+def remove_stopwords(tokens): return [t for t in tokens if t not in STOPWORDS]
+
+def simple_stem(word):
+    suffixes = ['ing','tion','ness','ment','able','ible','ful','less',
+                'ous','ive','er','est','ed','ly','s']
+    for suffix in suffixes:
+        if word.endswith(suffix) and len(word) - len(suffix) >= 3:
+            return word[:-len(suffix)]
+    return word
+
+def apply_stemming(tokens): return [simple_stem(t) for t in tokens]
+
+def preprocess(text):
+    text = text.lower()
+    text = remove_html_tags(text)
+    text = remove_urls(text)
+    text = remove_special_characters(text)
+    tokens = tokenize(text)
+    tokens = remove_stopwords(tokens)
+    tokens = apply_stemming(tokens)
+    tokens = [t for t in tokens if len(t) > 2]
+    return ' '.join(tokens)
+
+# --- LOAD MODEL (cached — loads only once per session) ---
+@st.cache_resource
+def load_model():
+    model = joblib.load("LR_model.pkl")
+    vectorizer = joblib.load("LR_vectorizer.pkl")
+    return model, vectorizer
+
+model, vectorizer = load_model()
+
+# --- INFERENCE ---
+def analyze_single(review_text):
+    cleaned = preprocess(review_text)
+    vec = vectorizer.transform([cleaned])
+    pred = model.predict(vec)[0]
+    prob = model.predict_proba(vec)[0]
+    return {
+        "sentiment": "POSITIVE" if pred == 1 else "NEGATIVE",
+        "confidence": round(float(max(prob)), 4),
+        "label": int(pred)
+    }
+
+def analyze_bulk(reviews_list):
+    reviews = [r.strip() for r in reviews_list if r.strip()]
+    cleaned_texts = [preprocess(r) for r in reviews]
+    vecs = vectorizer.transform(cleaned_texts)
+    preds = model.predict(vecs)
+    probs = model.predict_proba(vecs)
+
+    predictions = [
+        {
+            "text": reviews[i],
+            "sentiment": "POSITIVE" if preds[i] == 1 else "NEGATIVE",
+            "confidence": round(float(max(probs[i])), 4),
+            "label": int(preds[i])
+        }
+        for i in range(len(reviews))
+    ]
+
+    pos_count = sum(1 for p in predictions if p["sentiment"] == "POSITIVE")
+    neg_count = len(predictions) - pos_count
+    avg_conf = round(sum(p["confidence"] for p in predictions) / len(predictions), 4)
+    return {
+        "predictions": predictions,
+        "summary": {
+            "total": len(predictions),
+            "positive_count": pos_count,
+            "negative_count": neg_count,
+            "positive_percentage": round((pos_count / len(predictions)) * 100, 1),
+            "avg_confidence": avg_conf
+        }
+    }
+
+# ===================== UI =====================
 
 st.set_page_config(
     page_title="IMDb Sentiment Analyzer",
@@ -115,69 +214,24 @@ st.markdown("""
 
 def get_style_class(sentiment, confidence):
     if sentiment == "POSITIVE":
-        if confidence >= 80:
-            return "result-positive-high", "badge-pos-high"
-        elif confidence >= 60:
-            return "result-positive-mid", "badge-pos-mid"
-        else:
-            return "result-positive-low", "badge-pos-low"
+        if confidence >= 80: return "result-positive-high", "badge-pos-high"
+        elif confidence >= 60: return "result-positive-mid", "badge-pos-mid"
+        else: return "result-positive-low", "badge-pos-low"
     else:
-        if confidence >= 80:
-            return "result-negative-high", "badge-neg-high"
-        elif confidence >= 60:
-            return "result-negative-mid", "badge-neg-mid"
-        else:
-            return "result-negative-low", "badge-neg-low"
+        if confidence >= 80: return "result-negative-high", "badge-neg-high"
+        elif confidence >= 60: return "result-negative-mid", "badge-neg-mid"
+        else: return "result-negative-low", "badge-neg-low"
 
 
 def get_progress_color(sentiment, confidence):
     if sentiment == "POSITIVE":
-        if confidence >= 80:
-            return "#28a745"
-        elif confidence >= 60:
-            return "#5cb85c"
-        else:
-            return "#8bc34a"
+        if confidence >= 80: return "#28a745"
+        elif confidence >= 60: return "#5cb85c"
+        else: return "#8bc34a"
     else:
-        if confidence >= 80:
-            return "#dc3545"
-        elif confidence >= 60:
-            return "#e05c5c"
-        else:
-            return "#f08080"
-
-
-def analyze_single(review_text):
-    try:
-        response = requests.post(
-            f"{API_URL}/predict",
-            json={"text": review_text},
-            timeout=10
-        )
-        if response.status_code == 200:
-            return response.json()
-        else:
-            return {"error": f"API error: {response.status_code} | {response.text}"}
-    except requests.exceptions.ConnectionError:
-        return {"error": "Cannot connect to API. Make sure the FastAPI server is running."}
-    except Exception as e:
-        return {"error": str(e)}
-
-def analyze_bulk(reviews_list):
-    try:
-        response = requests.post(
-            f"{API_URL}/predict/bulk",
-            json={"reviews": reviews_list},
-            timeout=30
-        )
-        if response.status_code == 200:
-            return response.json()
-        else:
-            return {"error": f"API error: {response.status_code}"}
-    except requests.exceptions.ConnectionError:
-        return {"error": "Cannot connect to API. Make sure the FastAPI server is running."}
-    except Exception as e:
-        return {"error": str(e)}
+        if confidence >= 80: return "#dc3545"
+        elif confidence >= 60: return "#e05c5c"
+        else: return "#f08080"
 
 
 st.markdown('<div class="main-title">🎬 IMDb Sentiment Analyzer</div>', unsafe_allow_html=True)
@@ -202,29 +256,26 @@ with tab1:
             with st.spinner("Analyzing..."):
                 result = analyze_single(single_review.strip())
 
-            if "error" in result:
-                st.error(result["error"])
-            else:
-                sentiment = result.get("sentiment", "UNKNOWN")
-                confidence = round(result.get("confidence", 0) * 100, 1)
-                result_class, _ = get_style_class(sentiment, confidence)
-                emoji = "😊" if sentiment == "POSITIVE" else "😞"
-                color = get_progress_color(sentiment, confidence)
+            sentiment = result.get("sentiment", "UNKNOWN")
+            confidence = round(result.get("confidence", 0) * 100, 1)
+            result_class, _ = get_style_class(sentiment, confidence)
+            emoji = "😊" if sentiment == "POSITIVE" else "😞"
+            color = get_progress_color(sentiment, confidence)
 
-                st.markdown(f"""
-                <div class="{result_class}">
-                    <div style="font-size:1.4rem; font-weight:700;">{emoji} {sentiment}</div>
-                    <div style="font-size:0.9rem; margin-top:4px; opacity:0.85;">Confidence: {confidence}%</div>
-                </div>
-                """, unsafe_allow_html=True)
+            st.markdown(f"""
+            <div class="{result_class}">
+                <div style="font-size:1.4rem; font-weight:700;">{emoji} {sentiment}</div>
+                <div style="font-size:0.9rem; margin-top:4px; opacity:0.85;">Confidence: {confidence}%</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-                st.markdown(f"""
-                <div style="margin-top:12px;">
-                    <div style="height:10px; background:#e9ecef; border-radius:10px; overflow:hidden;">
-                        <div style="height:100%; width:{confidence}%; background:{color}; border-radius:10px; transition:width 0.4s;"></div>
-                    </div>
+            st.markdown(f"""
+            <div style="margin-top:12px;">
+                <div style="height:10px; background:#e9ecef; border-radius:10px; overflow:hidden;">
+                    <div style="height:100%; width:{confidence}%; background:{color}; border-radius:10px; transition:width 0.4s;"></div>
                 </div>
-                """, unsafe_allow_html=True)
+            </div>
+            """, unsafe_allow_html=True)
 
 
 with tab2:
