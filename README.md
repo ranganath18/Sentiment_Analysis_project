@@ -205,8 +205,8 @@ Confidence: 97%
 Add deployed link:
 
 ```text
-[
-https://sentimentanalysisproject-h3fwfhg8mcxplawbeukfea.streamlit.app/]
+
+https://sentimentanalysisproject-h3fwfhg8mcxplawbeukfea.streamlit.app/
 ```
 
 ---
