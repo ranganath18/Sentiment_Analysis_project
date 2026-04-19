@@ -206,7 +206,7 @@ Add deployed link:
 
 ```text
 [
-http://localhost:8501]
+https://sentimentanalysisproject-h3fwfhg8mcxplawbeukfea.streamlit.app/]
 ```
 
 ---
